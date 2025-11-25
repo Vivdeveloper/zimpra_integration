@@ -242,3 +242,15 @@ app_license = "mit"
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
+
+# doc_events = {
+#     "Delivery Note": {
+#         "on_update": "zimpra_integration.api.zimpra.send_webhook"
+#     }
+# }
+
+doc_events = {
+    "Delivery Note": {
+        "on_update": "zimpra_integration.zimpra_integration.background_jobs.webhook_job.send_webhook"
+    }
+}
