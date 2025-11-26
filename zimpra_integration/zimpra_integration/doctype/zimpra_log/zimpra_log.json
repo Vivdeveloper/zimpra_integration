@@ -15,12 +15,14 @@
   {
    "fieldname": "reference_doctype",
    "fieldtype": "Data",
-   "label": "Reference Doctype"
+   "label": "Reference Doctype",
+   "read_only": 1
   },
   {
    "fieldname": "reference_name",
    "fieldtype": "Data",
-   "label": "Reference Name"
+   "label": "Reference Name",
+   "read_only": 1
   },
   {
    "fieldname": "payload",
@@ -42,7 +44,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-11-15 14:15:34.549549",
+ "modified": "2025-11-26 14:31:45.361433",
  "modified_by": "Administrator",
  "module": "Zimpra Integration",
  "name": "Zimpra log",

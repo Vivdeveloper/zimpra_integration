@@ -13,6 +13,20 @@ def send_webhook(doc, event=None):
         timeout=300
     )
 
+# ---------------------- MANUAL TRIGGER FROM BUTTON ----------------------
+@frappe.whitelist()
+def manual_send(doctype, doc_name):
+    """This is used by the manual button."""
+    frappe.enqueue(
+        "zimpra_integration.zimpra_integration.background_jobs.webhook_job.process_webhook",
+        doc_doctype=doctype,
+        doc_name=doc_name,
+        queue="long",
+        timeout=300
+    )
+    return "Webhook queued"
+
+
 # ---------------------- BACKGROUND JOB ----------------------
 def process_webhook(doc_doctype, doc_name):
 
@@ -91,7 +105,7 @@ def process_webhook(doc_doctype, doc_name):
     # ---------------------------------------------------------
 
     payload = {
-        "ewaybill_no": "444446789551",
+        "ewaybill_no": doc.ewaybill or "",
         "lrNo": doc.lr_no or "",
         "ewayBillDate": format_datetime(ewaybill_date, "dd/MM/yyyy hh:mm:ss a") if ewaybill_date else "",
         "userGstin": doc.company_gstin or "",
