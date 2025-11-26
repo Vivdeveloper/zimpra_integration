@@ -38,21 +38,56 @@ def process_webhook(doc_doctype, doc_name):
 
 
     # ---------------------------------------------------------
-    #         GET LIVE COORDINATES (OpenStreetMap)
+    #   GET LIVE COORDINATES (OpenStreetMap) BASED ON 3 FIELDS
     # ---------------------------------------------------------
-    company_addr = (doc.company_address_display or "").replace("\n", " ")
 
-    coords = [0, 0]
+    from_addr = frappe.db.get_value("Address", doc.company_address, "address_line1") or ""
+    from_place = frappe.db.get_value("Address", doc.company_address, "gst_state") or ""
+    from_pincode = frappe.db.get_value("Address", doc.company_address, "pincode") or ""
+
+    search_query = f"{from_addr}, {from_place}, {from_pincode}"
+
+    from_coords = [0, 0]
+
     try:
         r = requests.get(
             "https://nominatim.openstreetmap.org/search",
-            params={"q": company_addr, "format": "json", "limit": 1},
+            params={"q": search_query, "format": "json", "limit": 1},
             headers={"User-Agent": "ERPNext"}
         )
         if r.ok and r.json():
-            coords = [float(r.json()[0]["lat"]), float(r.json()[0]["lon"])]
+            from_coords = [
+                float(r.json()[0]["lat"]),
+                float(r.json()[0]["lon"])
+            ]
     except:
         pass
+
+
+    # ---------------------------------------------------------
+    #   GET LIVE TO COORDINATES (OpenStreetMap)
+    # ---------------------------------------------------------
+    to_addr = frappe.db.get_value("Address", doc.shipping_address_name, "address_line1") or ""
+    to_place = frappe.db.get_value("Address", doc.shipping_address_name, "gst_state") or ""
+    to_pincode = frappe.db.get_value("Address", doc.shipping_address_name, "pincode") or ""
+
+    to_query = f"{to_addr}, {to_place}, {to_pincode}"
+    to_coords = [0, 0]
+
+    try:
+        r2 = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": to_query, "format": "json", "limit": 1},
+            headers={"User-Agent": "ERPNext"}
+        )
+        if r2.ok and r2.json():
+            to_coords = [
+                float(r2.json()[0]["lat"]),
+                float(r2.json()[0]["lon"])
+            ]
+    except:
+        pass
+
     # ---------------------------------------------------------
 
     payload = {
@@ -60,11 +95,11 @@ def process_webhook(doc_doctype, doc_name):
         "lrNo": doc.lr_no or "",
         "ewayBillDate": format_datetime(ewaybill_date, "dd/MM/yyyy hh:mm:ss a") if ewaybill_date else "",
         "userGstin": doc.company_gstin or "",
-        "fromAddr": (doc.company_address_display or "").replace("\n", " "),
+        "fromAddr": frappe.db.get_value("Address", doc.company_address, "address_line1") or "",
         "fromPlace": frappe.db.get_value("Address", doc.company_address, "gst_state") or "",
         "fromPincode": frappe.db.get_value("Address", doc.company_address, "pincode") or "",
         "fromStateCode": frappe.db.get_value("Address", doc.company_address, "gst_state_number") or "",
-        "fromCord": [11.0764467, 77.1321102],
+        "fromCord": from_coords,
 
         "toTrdName": doc.customer_name or "",
         "toStateCode": frappe.db.get_value("Address", doc.shipping_address_name, "gst_state_number") or "",
@@ -75,16 +110,12 @@ def process_webhook(doc_doctype, doc_name):
 
         "items": items_payload,
         
-        # "items": {
-        #     "Cement": {"code": "CEM001", "weight": 50, "unit": "kg"},
-        #     "Steel Rods": {"code": "STL002", "weight": 120, "unit": "kg"},
-        #     "Bricks": {"code": "BRK003", "weight": 500, "unit": "nos"}
-        # },
+
         "customerName": doc.customer_name or "",
         "customerPhone": doc.contact_mobile or "",
         "vehicleNumber": doc.vehicle_no or "",
   
-        "toCord": [8.8038527, 78.15272660000001],
+        "toCord": to_coords,
         "driverName": doc.driver_name or "",
         "driverPhone": doc.contact_mobile or "",
         "net_weight": doc.custom_block_weight or 0,
