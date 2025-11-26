@@ -50,57 +50,13 @@ def process_webhook(doc_doctype, doc_name):
     ewaybill_date = frappe.db.get_value("e-Waybill Log", doc.ewaybill, "created_on")
     valid_upto = frappe.db.get_value("e-Waybill Log", doc.ewaybill, "valid_upto")
 
+    # ---------------------- COORDINATES ----------------------
+    from_lat = float(frappe.db.get_value("Address", doc.company_address, "custom_latitude") or 0)
+    from_lon = float(frappe.db.get_value("Address", doc.company_address, "custom_longitude") or 0)
 
-    # ---------------------------------------------------------
-    #   GET LIVE COORDINATES (OpenStreetMap) BASED ON 3 FIELDS
-    # ---------------------------------------------------------
+    to_lat = float(frappe.db.get_value("Address", doc.shipping_address_name, "custom_latitude") or 0)
+    to_lon = float(frappe.db.get_value("Address", doc.shipping_address_name, "custom_longitude") or 0)
 
-    from_addr = frappe.db.get_value("Address", doc.company_address, "address_line1") or ""
-    from_place = frappe.db.get_value("Address", doc.company_address, "gst_state") or ""
-    from_pincode = frappe.db.get_value("Address", doc.company_address, "pincode") or ""
-
-    search_query = f"{from_addr}, {from_place}, {from_pincode}"
-
-    from_coords = [0, 0]
-
-    try:
-        r = requests.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={"q": search_query, "format": "json", "limit": 1},
-            headers={"User-Agent": "ERPNext"}
-        )
-        if r.ok and r.json():
-            from_coords = [
-                float(r.json()[0]["lat"]),
-                float(r.json()[0]["lon"])
-            ]
-    except:
-        pass
-
-
-    # ---------------------------------------------------------
-    #   GET LIVE TO COORDINATES (OpenStreetMap)
-    # ---------------------------------------------------------
-    to_addr = frappe.db.get_value("Address", doc.shipping_address_name, "address_line1") or ""
-    to_place = frappe.db.get_value("Address", doc.shipping_address_name, "gst_state") or ""
-    to_pincode = frappe.db.get_value("Address", doc.shipping_address_name, "pincode") or ""
-
-    to_query = f"{to_addr}, {to_place}, {to_pincode}"
-    to_coords = [0, 0]
-
-    try:
-        r2 = requests.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={"q": to_query, "format": "json", "limit": 1},
-            headers={"User-Agent": "ERPNext"}
-        )
-        if r2.ok and r2.json():
-            to_coords = [
-                float(r2.json()[0]["lat"]),
-                float(r2.json()[0]["lon"])
-            ]
-    except:
-        pass
 
     # ---------------------------------------------------------
 
@@ -109,11 +65,12 @@ def process_webhook(doc_doctype, doc_name):
         "lrNo": doc.lr_no or "",
         "ewayBillDate": format_datetime(ewaybill_date, "dd/MM/yyyy hh:mm:ss a") if ewaybill_date else "",
         "userGstin": doc.company_gstin or "",
-        "fromAddr": frappe.db.get_value("Address", doc.company_address, "address_line1") or "",
+        "fromAddr": " ".join(frappe.db.get_value("Address", doc.company_address, ["address_line1","address_line2"]) or ["",""]).strip(),
         "fromPlace": frappe.db.get_value("Address", doc.company_address, "gst_state") or "",
         "fromPincode": frappe.db.get_value("Address", doc.company_address, "pincode") or "",
         "fromStateCode": frappe.db.get_value("Address", doc.company_address, "gst_state_number") or "",
-        "fromCord": from_coords,
+        "fromCord": [from_lat, from_lon],
+
 
         "toTrdName": doc.customer_name or "",
         "toStateCode": frappe.db.get_value("Address", doc.shipping_address_name, "gst_state_number") or "",
@@ -129,7 +86,7 @@ def process_webhook(doc_doctype, doc_name):
         "customerPhone": doc.contact_mobile or "",
         "vehicleNumber": doc.vehicle_no or "",
   
-        "toCord": to_coords,
+        "toCord": [to_lat, to_lon],
         "driverName": doc.driver_name or "",
         "driverPhone": doc.custom_driver_number or "",
         "net_weight": doc.custom_block_weight or 0,
@@ -142,25 +99,46 @@ def process_webhook(doc_doctype, doc_name):
         "Content-Type": "application/json"
     }
 
-    # ------------------ ALWAYS CAPTURE RESPONSE ------------------
+    # ------------------ CAPTURE RESPONSE FULLY ------------------
     response_text = ""
+    status_flag = "Failed"
+    full_response = None
+
     try:
         response = requests.post(url, json=payload, headers=headers)
-        response_text = f"STATUS: {response.status_code}\n{response.text}"
+
+        status_flag = "Success" if response.status_code == 200 else "Failed"
+
+        try:
+            full_response = response.json()
+        except:
+            full_response = response.text
+
+        response_text = f"STATUS: {response.status_code}\n{full_response}"
+
     except Exception as e:
+        full_response = str(e)
         response_text = f"REQUEST ERROR: {str(e)}"
 
-    # ---------------------- ALWAYS LOG THE RESPONSE ----------------------
+    # ---------------------- LOG RESPONSE ----------------------
     try:
         log = frappe.get_doc({
             "doctype": "Zimpra log",
             "reference_doctype": doc_doctype,
             "reference_name": doc_name,
             "payload": json.dumps(payload, indent=2),
-            "response": response_text
+            "response": response_text,
+            "full_response": json.dumps(full_response, indent=2) if isinstance(full_response, dict) else str(full_response),
+            "status": status_flag
         })
         log.insert(ignore_permissions=True)
+
+        # ---- UPDATE Delivery Note custom_status ----
+        frappe.db.set_value(doc_doctype, doc_name, "custom_zimpra_status", status_flag)
+
         frappe.db.commit()
+
+
     except Exception as e:
         frappe.log_error(
             f"Zimpra Log Insert Failed:\n{str(e)}\n\nORIGINAL RESPONSE:\n{response_text}",

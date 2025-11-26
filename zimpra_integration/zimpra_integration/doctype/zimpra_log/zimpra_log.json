@@ -9,6 +9,7 @@
   "reference_name",
   "payload",
   "column_break_ecry",
+  "status",
   "response"
  ],
  "fields": [
@@ -20,8 +21,11 @@
   },
   {
    "fieldname": "reference_name",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
    "label": "Reference Name",
+   "options": "Delivery Note",
    "read_only": 1
   },
   {
@@ -39,19 +43,27 @@
    "fieldtype": "Code",
    "label": "Response",
    "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Success\nFailed",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-11-26 14:31:45.361433",
+ "modified": "2025-11-26 23:39:25.412335",
  "modified_by": "Administrator",
  "module": "Zimpra Integration",
  "name": "Zimpra log",
  "owner": "Administrator",
  "permissions": [
   {
-   "create": 1,
    "delete": 1,
    "email": 1,
    "export": 1,

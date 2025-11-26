@@ -252,5 +252,8 @@ app_license = "mit"
 doc_events = {
     "Delivery Note": {
         "on_submit": "zimpra_integration.zimpra_integration.background_jobs.webhook_job.send_webhook"
+    },
+    "Address": {
+        "before_save": "zimpra_integration.zimpra_integration.address_hooks.update_coordinates"
     }
 }
