@@ -117,9 +117,9 @@ def process_webhook(doc_doctype, doc_name):
 
         "toTrdName": doc.customer_name or "",
         "toStateCode": frappe.db.get_value("Address", doc.shipping_address_name, "gst_state_number") or "",
-        "toAddr": (doc.shipping_address or "").replace("\n", " "),
+        "toAddr": frappe.db.get_value("Address", doc.shipping_address_name, "address_line1") or "",
         "toPlace": frappe.db.get_value("Address", doc.shipping_address_name, "gst_state") or "",
-        "toPincode": frappe.db.get_value("Address", doc.shipping_address_name, "gst_state_number") or "",
+        "toPincode": frappe.db.get_value("Address", doc.shipping_address_name, "pincode") or "",
         "amount": str(doc.grand_total or 0),
 
         "items": items_payload,
@@ -131,7 +131,7 @@ def process_webhook(doc_doctype, doc_name):
   
         "toCord": to_coords,
         "driverName": doc.driver_name or "",
-        "driverPhone": doc.contact_mobile or "",
+        "driverPhone": doc.custom_driver_number or "",
         "net_weight": doc.custom_block_weight or 0,
         "invoiceNo": doc.name,
         "validUpto": format_datetime(valid_upto, "dd/MM/yyyy hh:mm:ss a") if valid_upto else "",
