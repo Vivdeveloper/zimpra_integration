@@ -5,6 +5,8 @@ from frappe.utils import format_datetime
 
 # ---------------------- FAST EXECUTION ----------------------
 def send_webhook(doc, event=None):
+    if not doc.ewaybill:
+        return  # No eWaybill → no webhook call
     frappe.enqueue(
         "zimpra_integration.zimpra_integration.background_jobs.webhook_job.process_webhook",
         doc_doctype=doc.doctype,
@@ -71,7 +73,6 @@ def process_webhook(doc_doctype, doc_name):
         "fromStateCode": frappe.db.get_value("Address", doc.company_address, "gst_state_number") or "",
         "fromCord": [from_lat, from_lon],
 
-
         "toTrdName": doc.customer_name or "",
         "toStateCode": frappe.db.get_value("Address", doc.shipping_address_name, "gst_state_number") or "",
         "toAddr": frappe.db.get_value("Address", doc.shipping_address_name, "address_line1") or "",
@@ -99,26 +100,27 @@ def process_webhook(doc_doctype, doc_name):
         "Content-Type": "application/json"
     }
 
-    # ------------------ CAPTURE RESPONSE FULLY ------------------
+    # ------------------ RESPONSE HANDLING ------------------
     response_text = ""
-    status_flag = "Failed"
-    full_response = None
+    full_response = {}
 
     try:
         response = requests.post(url, json=payload, headers=headers)
 
-        status_flag = "Success" if response.status_code == 200 else "Failed"
-
         try:
             full_response = response.json()
         except:
-            full_response = response.text
+            full_response = {}
 
         response_text = f"STATUS: {response.status_code}\n{full_response}"
 
     except Exception as e:
-        full_response = str(e)
+        full_response = {}
         response_text = f"REQUEST ERROR: {str(e)}"
+
+    # --------------- SUPER SHORT SUCCESS CHECK ---------------
+    status_flag = "Success" if full_response.get("success") else "Failed"
+
 
     # ---------------------- LOG RESPONSE ----------------------
     try:
@@ -133,9 +135,9 @@ def process_webhook(doc_doctype, doc_name):
         })
         log.insert(ignore_permissions=True)
 
-        # ---- UPDATE Delivery Note custom_status ----
+            # ---- UPDATE Delivery Note custom_status ----
         frappe.db.set_value(doc_doctype, doc_name, "custom_zimpra_status", status_flag)
-
+        
         frappe.db.commit()
 
 
