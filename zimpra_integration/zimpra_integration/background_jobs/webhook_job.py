@@ -28,6 +28,13 @@ def manual_send(doctype, doc_name):
     )
     return "Webhook queued"
 
+def clean_phone(phone):
+    if not phone:
+        return ""
+    digits = "".join(filter(str.isdigit, str(phone)))
+    return digits[-10:] if len(digits) >= 10 else ""
+
+
 
 # ---------------------- BACKGROUND JOB ----------------------
 def process_webhook(doc_doctype, doc_name):
@@ -43,7 +50,10 @@ def process_webhook(doc_doctype, doc_name):
         item.item_name: {
             "code": item.item_code,
             "weight": item.weight_per_unit or 0,
-            "unit": item.uom
+            "unit": item.uom,
+            "quantity": float(item.qty or 0),
+            "totalAmount": float(item.amount or 0),
+            "description": item.description or item.item_name or ""
         }
         for item in doc.items
     }
@@ -61,6 +71,13 @@ def process_webhook(doc_doctype, doc_name):
 
 
     # ---------------------------------------------------------
+    shipping_addr = frappe.db.get_value(
+        "Address",
+        doc.shipping_address_name,
+        ["address_line1", "gst_state", "gst_state_number", "pincode"],
+        as_dict=True
+        ) or {}
+    
 
     payload = {
         "ewaybill_no": doc.ewaybill or "",
@@ -74,26 +91,36 @@ def process_webhook(doc_doctype, doc_name):
         "fromCord": [from_lat, from_lon],
 
         "toTrdName": doc.customer_name or "",
-        "toStateCode": frappe.db.get_value("Address", doc.shipping_address_name, "gst_state_number") or "",
-        "toAddr": frappe.db.get_value("Address", doc.shipping_address_name, "address_line1") or "",
-        "toPlace": frappe.db.get_value("Address", doc.shipping_address_name, "gst_state") or "",
-        "toPincode": frappe.db.get_value("Address", doc.shipping_address_name, "pincode") or "",
+        # "toStateCode": frappe.db.get_value("Address", doc.shipping_address_name, "gst_state_number") or "",
+        # "toAddr": frappe.db.get_value("Address", doc.shipping_address_name, "address_line1") or "",
+        # "toPlace": frappe.db.get_value("Address", doc.shipping_address_name, "gst_state") or "",
+        # "toPincode": frappe.db.get_value("Address", doc.shipping_address_name, "pincode") or "",
+        "toStateCode": shipping_addr.get("gst_state_number", ""),
+        "toAddr": shipping_addr.get("address_line1", ""),
+        "toPlace": shipping_addr.get("gst_state", ""),
+        "toPincode": shipping_addr.get("pincode", ""),
+
+
         "amount": str(doc.grand_total or 0),
 
         "items": items_payload,
         
 
         "customerName": doc.customer_name or "",
-        "customerPhone": doc.contact_mobile or "",
+        # "customerPhone": doc.contact_mobile or "",
+        "customerPhone": clean_phone(doc.contact_mobile),
         "vehicleNumber": doc.vehicle_no or "",
   
         "toCord": [to_lat, to_lon],
         "driverName": doc.driver_name or "",
-        "driverPhone": doc.custom_driver_number or "",
+        # "driverPhone": doc.custom_driver_number or "",
+        "driverPhone": clean_phone(doc.custom_driver_number),
         "net_weight": doc.custom_block_weight or 0,
         "invoiceNo": doc.name,
         "validUpto": format_datetime(valid_upto, "dd/MM/yyyy hh:mm:ss a") if valid_upto else "",
-        "deliveryNoteTemplateName": doc.custom_dn_template or "aishwarya_tiles_dn"
+        "deliveryNoteTemplateName": "aishwarya_tiles_dn",
+        "transporterName":doc.transporter_name,
+
     }
 
     headers = {
