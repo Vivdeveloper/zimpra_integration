@@ -93,6 +93,7 @@ def process_webhook(doc_doctype, doc_name):
         "net_weight": doc.custom_block_weight or 0,
         "invoiceNo": doc.name,
         "validUpto": format_datetime(valid_upto, "dd/MM/yyyy hh:mm:ss a") if valid_upto else "",
+        "deliveryNoteTemplateName": doc.custom_dn_template or "aishwarya_tiles_dn"
     }
 
     headers = {
