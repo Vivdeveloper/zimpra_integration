@@ -153,6 +153,11 @@ def process_webhook(doc_doctype, doc_name):
     if valid_upto:
         payload["validUpto"] = format_datetime(valid_upto, "dd/MM/yyyy hh:mm:ss a")
 
+    if doc.custom_ewaybill_allow:
+       payload["is_ewb_present"] = doc.custom_ewaybill_allow
+
+    
+
     headers = {
         "Authorization": token,
         "Content-Type": "application/json"
