@@ -582,10 +582,10 @@ def process_update_webhook(doc_doctype, doc_name):
         "updateInvoiceNo": str(doc.name),
         "lrNo": str(doc.lr_no or ""),
         "customerName": str(doc.customer_name or ""),
-        "customerPhone": str(clean_phone(doc.contact_mobile)),
+        "customerPhone": str((doc.contact_mobile)),
         "vehicleNumber": str(doc.vehicle_no or ""),
         "driverName": str(doc.driver_name or ""),
-        "driverPhone": str(clean_phone(doc.custom_driver_number)),
+        "driverPhone": str((doc.custom_driver_number)),
     }
 
     # ------------------ CONDITIONAL EWAYBILL RULE ------------------
