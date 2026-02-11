@@ -408,15 +408,27 @@ def process_webhook(doc_doctype, doc_name):
         full_response = {}
         response_text = f"REQUEST ERROR: {str(e)}"
 
-    # ---------------------- STATUS CHECK ----------------------
+       # ---------------------- STATUS CHECK ----------------------
     zimpra_status_code = full_response.get("statusCode")
     success_flag = full_response.get("success", False)
-    message = (full_response.get("message") or "")
+    message = (full_response.get("message") or "").strip().lower()
 
-    if response and response.ok and success_flag and zimpra_status_code in (201, 205, 207):
+    # ----------- NEW CONDITION : INVOICE ALREADY EXISTS -----------
+    if "invoice number already exists" in message:
+        status_flag = "Success"
+        internal_status = "Invoice Already Exists"
+
+        # popup in delivery note
+        frappe.msgprint(
+            title="Zimpra Info",
+            msg="Invoice number already exists in Zimpra. Marked as Success.",
+            indicator="orange"
+        )
+
+    # ----------- NORMAL SUCCESS CASE -----------
+    elif response and response.ok and success_flag and zimpra_status_code in (201, 205, 207):
         status_flag = "Success"
 
-        # Optional: More descriptive internal status
         if zimpra_status_code == 201:
             internal_status = "All Orders Created"
         elif zimpra_status_code == 205:
@@ -424,8 +436,11 @@ def process_webhook(doc_doctype, doc_name):
         elif zimpra_status_code == 207:
             internal_status = "Partial Success"
 
+    # ----------- FAILED CASE -----------
     else:
         status_flag = "Failed"
+        internal_status = f"API Error ({zimpra_status_code})"
+
         internal_status = f"API Error ({zimpra_status_code})"
 
 
