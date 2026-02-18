@@ -321,7 +321,7 @@ def process_webhook(doc_doctype, doc_name):
         "invoiceNo": str(doc.name),
 
         # REQUIRED BY API
-        "deliveryNoteTemplateName": "aishwarya_tiles_dn",
+        "deliveryNoteTemplateName": str(doc.custom_select_print_format),
 
         "deliveryState": str(shipping_addr.get("state", "")),
         "deliveryCity": str(shipping_addr.get("city", "")),
