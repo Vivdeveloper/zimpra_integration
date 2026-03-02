@@ -224,8 +224,10 @@ def process_webhook(doc_doctype, doc_name):
         item.item_name: {
             "code": item.item_code,
             "weight": float(item.weight_per_unit or 0),
-            "unit": item.uom,
-            "quantity": float(item.qty or 0),
+            "unit1": item.uom,
+            "qty1": float(item.qty or 0),
+            "qty2": float(item.stock_qty or 0),
+            "unit2":item.stock_uom,
             "totalAmount": float(item.amount or 0),
             "description": item.description or item.item_name or ""
         }
