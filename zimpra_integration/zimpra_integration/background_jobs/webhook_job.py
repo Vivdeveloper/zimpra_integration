@@ -585,8 +585,12 @@ def process_update_webhook(doc_doctype, doc_name):
     doc = frappe.get_doc(doc_doctype, doc_name)
 
     settings = frappe.get_single("Zimpra API Settings")
-    url = settings.url.replace("webhook-track", "webhook-update")
+    base_url = (settings.url or "").rstrip("/").rsplit("/", 1)[0]
+    url = f"{base_url}/webhook-update"
     token = settings.token
+
+    if not base_url:
+        frappe.throw("Zimpra API Settings: URL is not configured")
 
     # ------------------ MANDATORY CHECK ------------------
     if not doc.name:
@@ -643,9 +647,9 @@ def execute_request(method, url, headers, payload, doc_doctype, doc_name, action
 
     try:
         if method == "PATCH":
-            response = requests.patch(url, json=payload, headers=headers, timeout=20)
+            response = requests.patch(url, json=payload, headers=headers, timeout=60)
         else:
-            response = requests.post(url, json=payload, headers=headers, timeout=20)
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
 
         try:
             full_response = response.json()
@@ -656,7 +660,7 @@ def execute_request(method, url, headers, payload, doc_doctype, doc_name, action
 
     except Exception as e:
         full_response = {}
-        response_text = f"{action} REQUEST ERROR: {str(e)}"
+        response_text = f"{action} REQUEST ERROR: {str(e)}\nURL: {url}"
         response = None
 
     # ---------------------- STATUS CHECK ----------------------
