@@ -585,12 +585,10 @@ def process_update_webhook(doc_doctype, doc_name):
     doc = frappe.get_doc(doc_doctype, doc_name)
 
     settings = frappe.get_single("Zimpra API Settings")
-    base_url = (settings.url or "").rstrip("/").rsplit("/", 1)[0]
-    url = f"{base_url}/webhook-update"
-    token = settings.token
-
-    if not base_url:
+    if not settings.url:
         frappe.throw("Zimpra API Settings: URL is not configured")
+    url = settings.url.replace("webhook-track", "webhook-update")
+    token = settings.token
 
     # ------------------ MANDATORY CHECK ------------------
     if not doc.name:
