@@ -217,8 +217,6 @@ def process_webhook(doc_doctype, doc_name):
     doc = frappe.get_doc(doc_doctype, doc_name)
 
     settings = frappe.get_single("Zimpra API Settings")
-    if not settings.url:
-        frappe.throw("Zimpra API Settings: URL is not configured")
     url = settings.url
     token = settings.token
 
@@ -238,91 +236,97 @@ def process_webhook(doc_doctype, doc_name):
     }
 
     # ---------------------- EWAYBILL DATES ----------------------
-    ewaybill_date = None
-    valid_upto = None
-    if doc.ewaybill:
-        ewaybill_date = frappe.db.get_value("e-Waybill Log", doc.ewaybill, "created_on")
-        valid_upto = frappe.db.get_value("e-Waybill Log", doc.ewaybill, "valid_upto")
-        # API rule: if ewaybill_no is sent, both dates are mandatory
-        if not ewaybill_date or not valid_upto:
-            frappe.throw(
-                "eWaybill is linked but ewayBillDate or validUpto is missing in e-Waybill Log. "
-                "Both are required when ewaybill_no is sent."
-            )
+    ewaybill_date = frappe.db.get_value("e-Waybill Log", doc.ewaybill, "created_on")
+    valid_upto = frappe.db.get_value("e-Waybill Log", doc.ewaybill, "valid_upto")
 
-    # ---------------------- COMPANY ADDRESS (single query) ----------------------
-    company_addr = frappe.db.get_value(
-        "Address",
-        doc.company_address,
-        ["address_line1", "address_line2", "gst_state", "gst_state_number", "pincode",
-         "custom_latitude", "custom_longitude"],
-        as_dict=True
-    ) or {}
+    # ---------------------- COORDINATES (SAFE + FALLBACK) ----------------------
 
-    from_lat = float(company_addr.get("custom_latitude") or 0)
-    from_lon = float(company_addr.get("custom_longitude") or 0)
+    # Pickup = Company Address
+    from_lat_raw = frappe.db.get_value("Address", doc.company_address, "custom_latitude")
+    from_lon_raw = frappe.db.get_value("Address", doc.company_address, "custom_longitude")
 
-    # ---------------------- SHIPPING ADDRESS ----------------------
-    shipping_addr = {}
+    from_lat = float(from_lat_raw or 0)
+    from_lon = float(from_lon_raw or 0)
+
+    # Delivery = Shipping Address
+    to_lat_raw = None
+    to_lon_raw = None
+
     if doc.shipping_address_name:
-        shipping_addr = frappe.db.get_value(
-            "Address",
-            doc.shipping_address_name,
-            ["address_line1", "gst_state", "gst_state_number", "pincode",
-             "state", "city", "county", "custom_district", "custom_latitude", "custom_longitude"],
-            as_dict=True
-        ) or {}
+        to_lat_raw = frappe.db.get_value("Address", doc.shipping_address_name, "custom_latitude")
+        to_lon_raw = frappe.db.get_value("Address", doc.shipping_address_name, "custom_longitude")
 
-    to_lat = float(shipping_addr.get("custom_latitude") or 0)
-    to_lon = float(shipping_addr.get("custom_longitude") or 0)
+    to_lat = float(to_lat_raw or 0)
+    to_lon = float(to_lon_raw or 0)
 
     used_fallback = False
+
+    # Fallback to pickup location if shipping GPS missing
     if not to_lat or not to_lon:
         to_lat = from_lat
         to_lon = from_lon
         used_fallback = True
 
-    # ---------------------- deliveryNoteTemplateName (API: must be one of 3 values) ----------------------
-    allowed_templates = ["Aishwarya Tiles DN", "Godrej DN", "AlphaLite DN"]
-    delivery_note_template = str(doc.custom_select_print_format or "").strip()
-    if delivery_note_template not in allowed_templates:
-        delivery_note_template = "AlphaLite DN"
+    # ---------------------- SHIPPING ADDRESS (SAFE) ----------------------
+    shipping_addr = {}
+    if doc.shipping_address_name:
+        shipping_addr = frappe.db.get_value(
+            "Address",
+            doc.shipping_address_name,
+            ["address_line1", "gst_state", "gst_state_number", "pincode", "state", "city"],
+            as_dict=True
+        ) or {}
 
     # ---------------------- PAYLOAD ----------------------
     payload = {
         "lrNo": str(doc.lr_no or ""),
         "userGstin": str(doc.company_gstin or ""),
 
-        "fromAddr": " ".join(filter(None, [
-            company_addr.get("address_line1", ""),
-            company_addr.get("address_line2", "")
-        ])).strip(),
-        "fromPlace": str(company_addr.get("gst_state") or ""),
-        "fromPincode": str(company_addr.get("pincode") or ""),
-        "fromStateCode": str(company_addr.get("gst_state_number") or ""),
-        "fromCord": [from_lat, from_lon],
+        "fromAddr": " ".join(
+            frappe.db.get_value(
+                "Address",
+                doc.company_address,
+                ["address_line1", "address_line2"]
+            ) or ["", ""]
+        ).strip(),
+
+        "fromPlace": str(
+            frappe.db.get_value("Address", doc.company_address, "gst_state") or ""
+        ),
+
+        "fromPincode": str(
+            frappe.db.get_value("Address", doc.company_address, "pincode") or ""
+        ),
+
+        "fromStateCode": str(
+            frappe.db.get_value("Address", doc.company_address, "gst_state_number") or ""
+        ),
+
+        "fromCord": [float(from_lat), float(from_lon)],
 
         "toTrdName": str(doc.customer_name or ""),
         "toStateCode": str(shipping_addr.get("gst_state_number", "")),
         "toAddr": str(shipping_addr.get("address_line1", "")),
         "toPlace": str(shipping_addr.get("gst_state", "")),
         "toPincode": str(shipping_addr.get("pincode", "")),
-        "toCord": [to_lat, to_lon],
 
         "amount": str(doc.grand_total or 0),
         "items": items_payload,
 
         "customerName": str(doc.customer_name or ""),
-        "customerPhone": str(doc.contact_mobile or ""),
+        "customerPhone": str(doc.contact_mobile),
         "vehicleNumber": str(doc.vehicle_no or ""),
+
+        "toCord": [float(to_lat), float(to_lon)],
         "driverName": str(doc.driver_name or ""),
-        "driverPhone": str(doc.custom_driver_number or ""),
+        "driverPhone": str(doc.custom_driver_number),
         "net_weight": float(doc.custom_block_weight or 0),
         "invoiceNo": str(doc.name),
 
-        "deliveryNoteTemplateName": delivery_note_template,
+        # REQUIRED BY API
+        "deliveryNoteTemplateName": str(doc.custom_select_print_format),
+
         "deliveryState": str(shipping_addr.get("state", "")),
-        "deliveryDistrict": str(shipping_addr.get("county") or shipping_addr.get("custom_district") or ""),
         "deliveryCity": str(shipping_addr.get("city", "")),
 
         "transporterName": str(doc.transporter_name or "")
@@ -331,13 +335,19 @@ def process_webhook(doc_doctype, doc_name):
     # ---------------------- CONDITIONAL FIELDS ----------------------
     if doc.ewaybill:
         payload["ewaybill_no"] = str(doc.ewaybill)
-        payload["ewayBillDate"] = format_datetime(ewaybill_date, "dd/MM/yyyy hh:mm:ss a")
-        payload["validUpto"] = format_datetime(valid_upto, "dd/MM/yyyy hh:mm:ss a")
 
-    # is_ewb_present: API accepts "yes" / "no" only
+    if ewaybill_date:
+        payload["ewayBillDate"] = format_datetime(
+            ewaybill_date, "dd/MM/yyyy hh:mm:ss a"
+        )
+
+    if valid_upto:
+        payload["validUpto"] = format_datetime(
+            valid_upto, "dd/MM/yyyy hh:mm:ss a"
+        )
+
     if doc.custom_ewaybill_allow:
-        raw = str(doc.custom_ewaybill_allow).strip().lower()
-        payload["is_ewb_present"] = "yes" if raw in ("yes", "1", "true") else "no"
+        payload["is_ewb_present"] = doc.custom_ewaybill_allow
 
     # ---------------------- REQUIRED FIELD VALIDATION ----------------------
     required_fields = [
@@ -384,12 +394,11 @@ def process_webhook(doc_doctype, doc_name):
     }
 
     # ---------------------- RESPONSE HANDLING ----------------------
-    response = None
     response_text = ""
     full_response = {}
 
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=60)
+        response = requests.post(url, json=payload, headers=headers, timeout=20)
 
         try:
             full_response = response.json()
@@ -399,23 +408,43 @@ def process_webhook(doc_doctype, doc_name):
         response_text = f"STATUS: {response.status_code}\n{full_response}"
 
     except Exception as e:
-        response_text = f"REQUEST ERROR: {str(e)}\nURL: {url}"
+        full_response = {}
+        response_text = f"REQUEST ERROR: {str(e)}"
 
-    # ---------------------- STATUS CHECK ----------------------
+       # ---------------------- STATUS CHECK ----------------------
     zimpra_status_code = full_response.get("statusCode")
     success_flag = full_response.get("success", False)
     message = (full_response.get("message") or "").strip().lower()
 
-    # Invoice already exists → treat as success (order was already created)
+    # ----------- NEW CONDITION : INVOICE ALREADY EXISTS -----------
     if "invoice number already exists" in message:
         status_flag = "Success"
+        internal_status = "Invoice Already Exists"
 
-    # Normal success: HTTP 2xx + success:true + statusCode 200 or 201
-    elif response and response.ok and success_flag and zimpra_status_code in (200, 201):
+        # popup in delivery note
+        frappe.msgprint(
+            title="Zimpra Info",
+            msg="Invoice number already exists in Zimpra. Marked as Success.",
+            indicator="orange"
+        )
+
+    # ----------- NORMAL SUCCESS CASE -----------
+    elif response and response.ok and success_flag and zimpra_status_code in (201, 205, 207):
         status_flag = "Success"
 
+        if zimpra_status_code == 201:
+            internal_status = "All Orders Created"
+        elif zimpra_status_code == 205:
+            internal_status = "Trip Updated"
+        elif zimpra_status_code == 207:
+            internal_status = "Partial Success"
+
+    # ----------- FAILED CASE -----------
     else:
         status_flag = "Failed"
+        internal_status = f"API Error ({zimpra_status_code})"
+
+        internal_status = f"API Error ({zimpra_status_code})"
 
 
     # ---------------------- LOG RESPONSE ----------------------
@@ -556,37 +585,42 @@ def process_update_webhook(doc_doctype, doc_name):
     doc = frappe.get_doc(doc_doctype, doc_name)
 
     settings = frappe.get_single("Zimpra API Settings")
-    if not settings.url:
-        frappe.throw("Zimpra API Settings: URL is not configured")
-    url = settings.url.replace("webhook-track", "webhook-update")
-    token = settings.token
+    url = settings.url_update
+    token = settings.token_update
+
+    # ------------------ MANDATORY CHECK ------------------
+    if not doc.name:
+        frappe.throw("invoiceNo is mandatory for Zimpra Update API")
+
+    ewaybill_date = frappe.db.get_value("e-Waybill Log", doc.ewaybill, "created_on")
+    valid_upto = frappe.db.get_value("e-Waybill Log", doc.ewaybill, "valid_upto")
 
     # ------------------ BASE PAYLOAD (ALL STRINGS) ------------------
     payload = {
-        "invoiceNo": str(doc.name),
+        "invoiceNo": str(doc.name),   # MANDATORY
         "updateInvoiceNo": str(doc.name),
         "lrNo": str(doc.lr_no or ""),
         "customerName": str(doc.customer_name or ""),
-        "customerPhone": str(doc.contact_mobile or ""),
+        "customerPhone": str((doc.contact_mobile)),
         "vehicleNumber": str(doc.vehicle_no or ""),
         "driverName": str(doc.driver_name or ""),
-        "driverPhone": str(doc.custom_driver_number or ""),
+        "driverPhone": str((doc.custom_driver_number)),
     }
 
     # ------------------ CONDITIONAL EWAYBILL RULE ------------------
     if doc.ewaybill:
-        ewaybill_date = frappe.db.get_value("e-Waybill Log", doc.ewaybill, "created_on")
-        valid_upto = frappe.db.get_value("e-Waybill Log", doc.ewaybill, "valid_upto")
-
         if not ewaybill_date or not valid_upto:
             frappe.throw(
-                "eWaybill is linked but ewayBillDate or validUpto is missing in e-Waybill Log. "
-                "Both are required when ewaybill_no is sent."
+                "If ewaybill_no is sent, both ewayBillDate and validUpto must be provided"
             )
 
         payload["ewaybill_no"] = str(doc.ewaybill)
-        payload["ewayBillDate"] = format_datetime(ewaybill_date, "dd/MM/yyyy hh:mm:ss a")
-        payload["validUpto"] = format_datetime(valid_upto, "dd/MM/yyyy hh:mm:ss a")
+        payload["ewayBillDate"] = format_datetime(
+            ewaybill_date, "dd/MM/yyyy hh:mm:ss a"
+        )
+        payload["validUpto"] = format_datetime(
+            valid_upto, "dd/MM/yyyy hh:mm:ss a"
+        )
 
     headers = {
         "Authorization": token,
@@ -604,25 +638,26 @@ def process_update_webhook(doc_doctype, doc_name):
     )
 
 def execute_request(method, url, headers, payload, doc_doctype, doc_name, action):
-    response = None
     response_text = ""
     full_response = {}
 
     try:
         if method == "PATCH":
-            response = requests.patch(url, json=payload, headers=headers, timeout=60)
+            response = requests.patch(url, json=payload, headers=headers, timeout=20)
         else:
-            response = requests.post(url, json=payload, headers=headers, timeout=60)
+            response = requests.post(url, json=payload, headers=headers, timeout=20)
 
         try:
             full_response = response.json()
-        except Exception:
+        except:
             full_response = {}
 
         response_text = f"{action} STATUS: {response.status_code}\n{full_response}"
 
     except Exception as e:
-        response_text = f"{action} REQUEST ERROR: {str(e)}\nURL Called: {url}"
+        full_response = {}
+        response_text = f"{action} REQUEST ERROR: {str(e)}"
+        response = None
 
     # ---------------------- STATUS CHECK ----------------------
     zimpra_status_code = full_response.get("statusCode")
