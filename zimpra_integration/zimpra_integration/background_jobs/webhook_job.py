@@ -216,8 +216,9 @@ def process_webhook(doc_doctype, doc_name):
 
     doc = frappe.get_doc(doc_doctype, doc_name)
 
-    url = "https://backend.graviti-test.in/api/v1/ewaybill/webhook-track"
-    token = "d1a4c0d2-6c2b-4c79-bf2a-8c1f42fda539"
+    settings = frappe.get_single("Zimpra API Settings")
+    url = settings.url
+    token = settings.token
 
     # ---------------------- DYNAMIC ITEMS ----------------------
     items_payload = {
@@ -583,8 +584,9 @@ def process_update_webhook(doc_doctype, doc_name):
 
     doc = frappe.get_doc(doc_doctype, doc_name)
 
-    url = "https://backend.graviti-test.in/api/v1/ewaybill/webhook-update"
-    token = frappe.conf.get("zimpra_api_token") or "d1a4c0d2-6c2b-4c79-bf2a-8c1f42fda539"
+    settings = frappe.get_single("Zimpra API Settings")
+    url = settings.url.replace("webhook-track", "webhook-update")
+    token = settings.token
 
     # ------------------ MANDATORY CHECK ------------------
     if not doc.name:
