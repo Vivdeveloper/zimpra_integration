@@ -216,9 +216,8 @@ def process_webhook(doc_doctype, doc_name):
 
     doc = frappe.get_doc(doc_doctype, doc_name)
 
-    settings = frappe.get_single("Zimpra API Settings")
-    url = settings.url
-    token = settings.token
+    url = "https://backend.graviti-test.in/api/v1/ewaybill/webhook-track"
+    token = "d1a4c0d2-6c2b-4c79-bf2a-8c1f42fda539"
 
     # ---------------------- DYNAMIC ITEMS ----------------------
     items_payload = {
@@ -584,11 +583,8 @@ def process_update_webhook(doc_doctype, doc_name):
 
     doc = frappe.get_doc(doc_doctype, doc_name)
 
-    settings = frappe.get_single("Zimpra API Settings")
-    if not settings.url:
-        frappe.throw("Zimpra API Settings: URL is not configured")
-    url = settings.url.replace("webhook-track", "webhook-update")
-    token = settings.token
+    url = "https://backend.graviti-test.in/api/v1/ewaybill/webhook-update"
+    token = frappe.conf.get("zimpra_api_token") or "d1a4c0d2-6c2b-4c79-bf2a-8c1f42fda539"
 
     # ------------------ MANDATORY CHECK ------------------
     if not doc.name:
@@ -645,9 +641,9 @@ def execute_request(method, url, headers, payload, doc_doctype, doc_name, action
 
     try:
         if method == "PATCH":
-            response = requests.patch(url, json=payload, headers=headers, timeout=60)
+            response = requests.patch(url, json=payload, headers=headers, timeout=20)
         else:
-            response = requests.post(url, json=payload, headers=headers, timeout=60)
+            response = requests.post(url, json=payload, headers=headers, timeout=20)
 
         try:
             full_response = response.json()
@@ -658,7 +654,7 @@ def execute_request(method, url, headers, payload, doc_doctype, doc_name, action
 
     except Exception as e:
         full_response = {}
-        response_text = f"{action} REQUEST ERROR: {str(e)}\nURL: {url}"
+        response_text = f"{action} REQUEST ERROR: {str(e)}"
         response = None
 
     # ---------------------- STATUS CHECK ----------------------
