@@ -6,25 +6,37 @@
  "engine": "InnoDB",
  "field_order": [
   "url",
-  "token"
+  "token",
+  "url_update",
+  "token_update"
  ],
  "fields": [
   {
    "fieldname": "url",
    "fieldtype": "Data",
-   "label": "URL"
+   "label": "URL Track"
   },
   {
    "fieldname": "token",
    "fieldtype": "Data",
-   "label": "Token"
+   "label": "Token Track"
+  },
+  {
+   "fieldname": "url_update",
+   "fieldtype": "Data",
+   "label": "URL Update"
+  },
+  {
+   "fieldname": "token_update",
+   "fieldtype": "Data",
+   "label": "Token Update"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-05-07 22:35:16.919607",
+ "modified": "2026-05-07 23:31:22.187432",
  "modified_by": "Administrator",
  "module": "Zimpra Integration",
  "name": "Zimpra API Settings",
