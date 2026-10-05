@@ -67,31 +67,64 @@ def _mark_result(doc_doctype, doc_name, payload, response_text, status_flag):
 			pass
 
 
-# ---------------------- FAST EXECUTION ----------------------
-def send_webhook(doc, event=None):
-	if not doc.ewaybill:
-		return  # No eWaybill → no webhook call
+def _all_items_alphalite_aac(doc):
+	"""True when every DN item belongs to Item Group 'Alphalite AAC'."""
+	if not doc.items:
+		return False
+	item_codes = [d.item_code for d in doc.items if d.item_code]
+	if not item_codes or len(item_codes) != len(doc.items):
+		return False
+	groups = frappe.get_all(
+		"Item",
+		filters={"name": ["in", item_codes]},
+		fields=["name", "item_group"],
+	)
+	group_map = {g.name: g.item_group for g in groups}
+	return all(group_map.get(code) == "Alphalite AAC" for code in item_codes)
 
+
+def _enqueue_create(doc_doctype, doc_name):
 	frappe.enqueue(
 		"zimpra_integration.zimpra_integration.background_jobs.webhook_job.process_webhook",
-		doc_doctype=doc.doctype,
-		doc_name=doc.name,
+		doc_doctype=doc_doctype,
+		doc_name=doc_name,
 		queue="long",
 		timeout=300,
+		enqueue_after_commit=True,
 	)
+
+
+# ---------------------- DOC EVENTS ----------------------
+def send_webhook(doc, event=None):
+	"""on_update: only when eWaybill is present (legacy path)."""
+	if not doc.ewaybill:
+		return
+	_enqueue_create(doc.doctype, doc.name)
+
+
+def auto_send_on_submit(doc, event=None):
+	"""on_submit: reliable server-side trigger (does not depend on browser JS).
+
+	Runs for Alphalite AAC Delivery Notes even when eWaybill is blank.
+	"""
+	if doc.docstatus != 1:
+		return
+
+	# Avoid duplicate queue if already successfully sent
+	if doc.get("custom_zimpra_status") == "Success":
+		return
+
+	if not _all_items_alphalite_aac(doc):
+		return
+
+	_enqueue_create(doc.doctype, doc.name)
 
 
 # ---------------------- MANUAL TRIGGER FROM BUTTON ----------------------
 @frappe.whitelist()
 def manual_send(doctype, doc_name):
 	"""This is used by the manual button."""
-	frappe.enqueue(
-		"zimpra_integration.zimpra_integration.background_jobs.webhook_job.process_webhook",
-		doc_doctype=doctype,
-		doc_name=doc_name,
-		queue="long",
-		timeout=300,
-	)
+	_enqueue_create(doctype, doc_name)
 	return "Webhook queued"
 
 
@@ -103,6 +136,7 @@ def manual_update(doctype, doc_name):
 		doc_name=doc_name,
 		queue="long",
 		timeout=300,
+		enqueue_after_commit=True,
 	)
 	return "Update Webhook queued"
 

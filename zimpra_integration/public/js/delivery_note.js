@@ -20,10 +20,8 @@ frappe.ui.form.on("Delivery Note", {
 		}
 	},
 
-	on_submit(frm) {
-		// First submit should CREATE (manual_send), not UPDATE
-		zimpra_maybe_auto_send(frm, "manual_send", "Sending to Vehicle Portal...");
-	},
+	// Auto-send on submit is handled server-side in
+	// webhook_job.auto_send_on_submit (reliable; no browser dependency).
 });
 
 function zimpra_trigger(frm, method_name, freeze_message) {
@@ -48,7 +46,6 @@ function zimpra_trigger(frm, method_name, freeze_message) {
 				message: __("Zimpra webhook queued. Status will update shortly."),
 				indicator: "blue",
 			});
-			// Refresh after background job usually finishes
 			setTimeout(() => frm.reload_doc(), 5000);
 		},
 		error() {
@@ -56,51 +53,6 @@ function zimpra_trigger(frm, method_name, freeze_message) {
 				title: __("Zimpra Error"),
 				message: __("Could not trigger webhook. Check Error Log."),
 				indicator: "red",
-			});
-		},
-	});
-}
-
-function zimpra_maybe_auto_send(frm, method_name, freeze_message) {
-	const item_codes = (frm.doc.items || [])
-		.map((row) => row.item_code)
-		.filter(Boolean);
-
-	if (!item_codes.length) {
-		return;
-	}
-
-	// item_group is NOT on Delivery Note Item — fetch from Item master
-	frappe.call({
-		method: "frappe.client.get_list",
-		args: {
-			doctype: "Item",
-			filters: { name: ["in", item_codes] },
-			fields: ["name", "item_group"],
-			limit_page_length: item_codes.length,
-		},
-		callback(r) {
-			const rows = r.message || [];
-			const group_map = {};
-			rows.forEach((row) => {
-				group_map[row.name] = row.item_group;
-			});
-
-			const all_alphalite = item_codes.every(
-				(code) => group_map[code] === "Alphalite AAC"
-			);
-
-			if (!all_alphalite) {
-				return;
-			}
-
-			zimpra_trigger(frm, method_name, freeze_message);
-		},
-		error() {
-			frappe.msgprint({
-				title: __("Zimpra Error"),
-				message: __("Could not verify Item Group for Zimpra auto-send."),
-				indicator: "orange",
 			});
 		},
 	});

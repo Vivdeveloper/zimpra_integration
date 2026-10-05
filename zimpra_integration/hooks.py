@@ -251,7 +251,9 @@ doctype_js = {"Delivery Note": "public/js/delivery_note.js"}
 
 doc_events = {
     "Delivery Note": {
-        "on_update": "zimpra_integration.zimpra_integration.background_jobs.webhook_job.send_webhook"
+        # Browser JS on_submit is unreliable after redirect; server hook is the source of truth
+        "on_submit": "zimpra_integration.zimpra_integration.background_jobs.webhook_job.auto_send_on_submit",
+        "on_update": "zimpra_integration.zimpra_integration.background_jobs.webhook_job.send_webhook",
     },
     "Address": {
         "before_save": "zimpra_integration.zimpra_integration.address_hooks.update_coordinates"
